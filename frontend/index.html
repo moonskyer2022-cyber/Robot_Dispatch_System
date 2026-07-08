@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>机器人调度系统</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">调</span>
+        <div>
+          <strong>机器人调度</strong>
+          <small>智能调度台</small>
+        </div>
+      </div>
+      <nav>
+        <a class="active" href="#overview">概览</a>
+        <a href="#tasks">任务</a>
+        <a href="#robots">机器人</a>
+        <a href="#map">地图</a>
+      </nav>
+    </aside>
+
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>机器人调度系统</h1>
+          <p>基础版：任务创建、机器人状态、智能评分建议、自动调度。</p>
+        </div>
+        <button id="runDispatchBtn" class="primary">运行智能调度</button>
+      </header>
+
+      <section id="overview" class="metrics">
+        <article><span>待调度任务</span><strong id="pendingCount">0</strong></article>
+        <article><span>空闲机器人</span><strong id="idleCount">0</strong></article>
+        <article><span>执行中</span><strong id="busyCount">0</strong></article>
+        <article><span>智能调度建议</span><strong id="lastSuggestion">待运行</strong></article>
+      </section>
+
+      <section class="grid">
+        <div class="panel form-panel">
+          <div class="panel-head">
+            <h2>创建任务</h2>
+            <span>创建配送或巡检任务</span>
+          </div>
+          <form id="taskForm">
+            <label>
+              任务类型
+              <select name="type">
+                <option value="delivery">配送任务</option>
+                <option value="inspection">巡检任务</option>
+              </select>
+            </label>
+            <label>
+              优先级
+              <input name="priority" type="number" min="1" max="10" value="5" />
+            </label>
+            <label>
+              起点
+              <select name="start_node" id="startNode"></select>
+            </label>
+            <label>
+              终点
+              <select name="end_node" id="endNode"></select>
+            </label>
+            <button class="primary" type="submit">创建任务</button>
+          </form>
+        </div>
+
+        <div id="robots" class="panel">
+          <div class="panel-head">
+            <h2>机器人列表</h2>
+            <span>实时机器人状态</span>
+          </div>
+          <div id="robotList" class="robot-list"></div>
+        </div>
+      </section>
+
+      <section id="tasks" class="panel">
+        <div class="panel-head">
+            <h2>任务队列</h2>
+          <span>任务队列与执行状态</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>类型</th>
+                <th>优先级</th>
+                <th>路线</th>
+                <th>机器人</th>
+                <th>状态</th>
+                <th>预计</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="taskRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div id="map" class="panel">
+          <div class="panel-head">
+            <h2>地图节点</h2>
+            <span>节点图展示</span>
+          </div>
+          <div id="mapCanvas" class="map"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>调度日志</h2>
+            <span>调度决策日志</span>
+          </div>
+          <div id="logList" class="log-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

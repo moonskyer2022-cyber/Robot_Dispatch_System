@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: robot-dispatch-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: robot_dispatch
+      MYSQL_USER: dispatch
+      MYSQL_PASSWORD: dispatch
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-udispatch", "-pdispatch"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+volumes:
+  mysql_data:
