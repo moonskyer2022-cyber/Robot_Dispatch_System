@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 RobotStatus = Literal["idle", "busy", "charging", "offline"]
@@ -16,13 +17,21 @@ class RobotCreate(BaseModel):
     y: float = 0
     capability: str = "delivery"
 
-    @field_validator("id", "name", "capability")
+    @field_validator("id", "name")
     @classmethod
     def must_not_be_blank(cls, value: str) -> str:
         value = value.strip()
         if not value:
             raise ValueError("must not be blank")
         return value
+
+    @field_validator("capability")
+    @classmethod
+    def normalize_capabilities(cls, value: str) -> str:
+        capabilities = list(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+        if not capabilities:
+            raise ValueError("must contain at least one capability")
+        return ",".join(capabilities)
 
 
 class RobotHeartbeat(BaseModel):
@@ -34,11 +43,11 @@ class RobotHeartbeat(BaseModel):
 
 
 class RobotOut(RobotCreate):
+    status: RobotStatus
     current_task_id: str | None = None
     last_heartbeat_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskCreate(BaseModel):
@@ -55,6 +64,12 @@ class TaskCreate(BaseModel):
             raise ValueError("must not be blank")
         return value
 
+    @model_validator(mode="after")
+    def nodes_must_differ(self):
+        if self.start_node == self.end_node:
+            raise ValueError("start_node and end_node must differ")
+        return self
+
 
 class TaskOut(BaseModel):
     id: str
@@ -70,8 +85,7 @@ class TaskOut(BaseModel):
     assigned_at: datetime | None
     completed_at: datetime | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MapNodeOut(BaseModel):
@@ -81,8 +95,17 @@ class MapNodeOut(BaseModel):
     y: float
     type: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MapEdgeOut(BaseModel):
+    id: int
+    from_node: str
+    to_node: str
+    distance: float
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DispatchResult(BaseModel):
@@ -96,11 +119,15 @@ class DispatchResult(BaseModel):
 class DecisionLogOut(BaseModel):
     id: int
     task_id: str
-    candidate_robots: str
+    candidate_robots: list[str]
     selected_robot_id: str | None
-    score_detail: str
+    score_detail: list[dict[str, Any]]
     decision_reason: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("candidate_robots", "score_detail", mode="before")
+    @classmethod
+    def parse_json_fields(cls, value):
+        return json.loads(value) if isinstance(value, str) else value

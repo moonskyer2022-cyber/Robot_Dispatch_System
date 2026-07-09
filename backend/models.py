@@ -4,6 +4,7 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Te
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
+from .time_utils import utc_now
 
 
 class Robot(Base):
@@ -17,8 +18,8 @@ class Robot(Base):
     y: Mapped[float] = mapped_column(Float, default=0)
     capability: Mapped[str] = mapped_column(String(80), default="delivery")
     current_task_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class Task(Base):
@@ -33,7 +34,7 @@ class Task(Base):
     assigned_robot_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("robots.id"), nullable=True)
     estimated_distance: Mapped[float | None] = mapped_column(Float, nullable=True)
     estimated_duration: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -67,4 +68,4 @@ class DispatchDecisionLog(Base):
     selected_robot_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     score_detail: Mapped[str] = mapped_column(Text, nullable=False)
     decision_reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)

@@ -1,8 +1,7 @@
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from .models import MapEdge, MapNode, Robot
+from .time_utils import utc_now
 
 
 def seed_initial_data(db: Session) -> None:
@@ -28,7 +27,7 @@ def seed_initial_data(db: Session) -> None:
         db.add_all([MapEdge(from_node=a, to_node=b, distance=d) for a, b, d in edges])
 
     if db.query(Robot).count() == 0:
-        now = datetime.utcnow()
+        now = utc_now()
         db.add_all(
             [
                 Robot(id="R01", name="一号车", status="idle", battery=86, x=15, y=20, capability="delivery,inspection", last_heartbeat_at=now),

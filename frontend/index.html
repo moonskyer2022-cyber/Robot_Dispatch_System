@@ -27,9 +27,13 @@
       <header class="topbar">
         <div>
           <h1>机器人调度系统</h1>
-          <p>基础版：任务创建、机器人状态、智能评分建议、自动调度。</p>
+          <p>任务、机器人与调度决策实时总览</p>
         </div>
-        <button id="runDispatchBtn" class="primary">运行智能调度</button>
+        <div class="topbar-actions">
+          <span id="lastUpdated" class="last-updated">尚未同步</span>
+          <button id="refreshBtn" class="icon-button" type="button" title="刷新数据" aria-label="刷新数据">↻</button>
+          <button id="runDispatchBtn" class="primary" type="button">运行智能调度</button>
+        </div>
       </header>
 
       <section id="overview" class="metrics">
@@ -80,8 +84,20 @@
 
       <section id="tasks" class="panel">
         <div class="panel-head">
+          <div>
             <h2>任务队列</h2>
-          <span>任务队列与执行状态</span>
+            <span>按状态查看并处理任务</span>
+          </div>
+          <label class="compact-field">
+            <span>状态</span>
+            <select id="taskStatusFilter">
+              <option value="all">全部</option>
+              <option value="pending">待调度</option>
+              <option value="assigned">已分配</option>
+              <option value="completed">已完成</option>
+              <option value="cancelled">已取消</option>
+            </select>
+          </label>
         </div>
         <div class="table-wrap">
           <table>
@@ -121,7 +137,7 @@
       </section>
     </main>
 
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
   </body>
 </html>

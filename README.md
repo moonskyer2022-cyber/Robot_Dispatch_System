@@ -6,6 +6,7 @@
 
 - 机器人状态管理和心跳接口
 - 任务创建、完成、状态流转
+- 任务取消与离线机器人任务自动回收
 - 基于规则评分的 AI 调度建议
 - 自动选择优先级最高的待调度任务
 - 调度决策日志
@@ -53,10 +54,25 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 - `GET /api/tasks`
 - `POST /api/tasks`
 - `POST /api/tasks/{task_id}/complete`
+- `POST /api/tasks/{task_id}/cancel`
 - `POST /api/dispatch/run`
 - `POST /api/dispatch/suggest/{task_id}`
 - `GET /api/dispatch/logs`
 - `GET /api/map/nodes`
+- `GET /api/map/edges`
+
+## 配置
+
+- `DATABASE_URL`：MySQL 连接地址
+- `DISPATCH_BATTERY_THRESHOLD`：可参与调度的最低电量
+- `HEARTBEAT_OFFLINE_SECONDS`：心跳超时秒数；刷新机器人列表或运行调度时，执行中任务会退回队列
+- `CORS_ALLOW_ORIGINS`：允许跨域访问的来源，多个来源使用逗号分隔
+
+## 测试
+
+```bash
+python -m unittest discover -v
+```
 
 ## 调度规则
 

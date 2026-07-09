@@ -2,11 +2,12 @@ import json
 import math
 import os
 from heapq import heappop, heappush
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
 from .models import DispatchDecisionLog, MapEdge, MapNode, Robot, Task
+from .time_utils import utc_now
 
 BATTERY_THRESHOLD = int(os.getenv("DISPATCH_BATTERY_THRESHOLD", "25"))
 HEARTBEAT_OFFLINE_SECONDS = int(os.getenv("HEARTBEAT_OFFLINE_SECONDS", "120"))
@@ -44,8 +45,8 @@ def shortest_route_distance(db: Session, start_node: str, end_node: str) -> floa
     return None
 
 
-def mark_stale_robots_offline(db: Session) -> None:
-    stale_before = datetime.utcnow() - timedelta(seconds=HEARTBEAT_OFFLINE_SECONDS)
+def mark_stale_robots_offline(db: Session) -> int:
+    stale_before = utc_now() - timedelta(seconds=HEARTBEAT_OFFLINE_SECONDS)
     stale_robots = (
         db.query(Robot)
         .filter(Robot.status.in_(["idle", "busy", "charging"]))
@@ -53,7 +54,30 @@ def mark_stale_robots_offline(db: Session) -> None:
         .all()
     )
     for robot in stale_robots:
+        if robot.current_task_id:
+            task = db.get(Task, robot.current_task_id)
+            if (
+                task
+                and task.status == "assigned"
+                and task.assigned_robot_id == robot.id
+            ):
+                task.status = "pending"
+                task.assigned_robot_id = None
+                task.assigned_at = None
+                task.estimated_distance = None
+                task.estimated_duration = None
+                db.add(
+                    DispatchDecisionLog(
+                        task_id=task.id,
+                        candidate_robots=json.dumps([robot.id]),
+                        selected_robot_id=None,
+                        score_detail=json.dumps([]),
+                        decision_reason=f"机器人 {robot.name} 心跳超时，任务已退回队列",
+                    )
+                )
+            robot.current_task_id = None
         robot.status = "offline"
+    return len(stale_robots)
 
 
 def estimate_task_distance(db: Session, robot: Robot, task: Task) -> tuple[float, int]:
@@ -159,9 +183,9 @@ def claim_best_robot(db: Session, task: Task) -> tuple[Robot | None, list[dict],
         if claimed:
             db.expire_all()
             robot = db.get(Robot, candidate["robot_id"])
-            return robot, scores, "Selected the eligible robot with the lowest score"
+            return robot, scores, "选择综合评分最低的机器人"
 
-    return None, scores, "No eligible robot is currently available"
+    return None, scores, "当前没有可用的机器人"
 
 
 def assign_next_task(db: Session):
@@ -184,7 +208,7 @@ def assign_next_task(db: Session):
         total_distance, duration = estimate_task_distance(db, robot, task)
         task.status = "assigned"
         task.assigned_robot_id = robot.id
-        task.assigned_at = datetime.utcnow()
+        task.assigned_at = utc_now()
         task.estimated_distance = total_distance
         task.estimated_duration = duration
         robot.status = "busy"
