@@ -1,9 +1,13 @@
+import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -23,9 +27,18 @@ from .seed import seed_initial_data
 
 app = FastAPI(title="AI Robot Dispatch System", version="0.1.0")
 
+CORS_ALLOW_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -42,8 +55,12 @@ def on_startup():
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "service": "robot-dispatch"}
+def health(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {"status": "ok", "service": "robot-dispatch", "database": "ok"}
 
 
 @app.get("/api/robots", response_model=list[RobotOut])
@@ -67,6 +84,17 @@ def heartbeat(robot_id: str, payload: RobotHeartbeat, db: Session = Depends(get_
     robot = db.get(Robot, robot_id)
     if not robot:
         raise HTTPException(status_code=404, detail="Robot not found")
+    if robot.current_task_id:
+        if payload.current_task_id != robot.current_task_id or payload.status != "busy":
+            raise HTTPException(
+                status_code=409,
+                detail="Heartbeat conflicts with the robot's assigned task",
+            )
+    elif payload.current_task_id is not None or payload.status == "busy":
+        raise HTTPException(
+            status_code=409,
+            detail="Busy tasks can only be assigned by the dispatch service",
+        )
     robot.status = payload.status
     robot.battery = payload.battery
     robot.x = payload.x
@@ -152,4 +180,5 @@ def map_nodes(db: Session = Depends(get_db)):
     return db.query(MapNode).order_by(MapNode.id).all()
 
 
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

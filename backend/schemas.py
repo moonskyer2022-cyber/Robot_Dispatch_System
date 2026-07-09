@@ -1,21 +1,32 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+RobotStatus = Literal["idle", "busy", "charging", "offline"]
 
 
 class RobotCreate(BaseModel):
     id: str
     name: str
-    status: str = "idle"
+    status: Literal["idle", "charging", "offline"] = "idle"
     battery: int = Field(default=100, ge=0, le=100)
     x: float = 0
     y: float = 0
     capability: str = "delivery"
 
+    @field_validator("id", "name", "capability")
+    @classmethod
+    def must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
 
 class RobotHeartbeat(BaseModel):
-    status: str
+    status: RobotStatus
     battery: int = Field(ge=0, le=100)
     x: float
     y: float
@@ -35,6 +46,14 @@ class TaskCreate(BaseModel):
     priority: int = Field(default=3, ge=1, le=10)
     start_node: str
     end_node: str
+
+    @field_validator("type", "start_node", "end_node")
+    @classmethod
+    def must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
 
 
 class TaskOut(BaseModel):

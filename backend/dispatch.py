@@ -132,19 +132,52 @@ def suggest_for_task(db: Session, task: Task) -> tuple[Robot | None, list[dict],
     return db.get(Robot, winner_score["robot_id"]), scores, "选择综合评分最低的机器人"
 
 
+def claim_best_robot(db: Session, task: Task) -> tuple[Robot | None, list[dict], str]:
+    robots = db.query(Robot).order_by(Robot.id).all()
+    scores = [score_robot(db, robot, task) for robot in robots]
+    eligible = sorted(
+        (item for item in scores if item["eligible"]),
+        key=lambda item: item["score"],
+    )
+
+    for candidate in eligible:
+        claimed = (
+            db.query(Robot)
+            .filter(
+                Robot.id == candidate["robot_id"],
+                Robot.status == "idle",
+                Robot.current_task_id.is_(None),
+            )
+            .update(
+                {
+                    Robot.status: "busy",
+                    Robot.current_task_id: task.id,
+                },
+                synchronize_session=False,
+            )
+        )
+        if claimed:
+            db.expire_all()
+            robot = db.get(Robot, candidate["robot_id"])
+            return robot, scores, "Selected the eligible robot with the lowest score"
+
+    return None, scores, "No eligible robot is currently available"
+
+
 def assign_next_task(db: Session):
     mark_stale_robots_offline(db)
     task = (
         db.query(Task)
         .filter(Task.status == "pending")
         .order_by(Task.priority.desc(), Task.created_at.asc())
+        .with_for_update(skip_locked=True)
         .first()
     )
     if not task:
         db.commit()
         return None, None, False, "没有待调度任务", []
 
-    robot, scores, reason = suggest_for_task(db, task)
+    robot, scores, reason = claim_best_robot(db, task)
     selected_id = robot.id if robot else None
 
     if robot:
