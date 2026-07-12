@@ -1,4 +1,4 @@
-# AI Robot Dispatch System
+# 机器人调度系统（Robot Dispatch System）
 
 一个面向仓储和园区场景的机器人任务调度示例系统。项目提供机器人状态管理、任务队列、基于规则的调度决策、地图路径计算、调度日志和 Web 可视化控制台。
 
@@ -151,6 +151,11 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
 | `DATABASE_URL` | MySQL 连接地址 | `mysql+pymysql://dispatch:dispatch@127.0.0.1:3306/robot_dispatch?charset=utf8mb4` |
+| `MYSQL_ROOT_PASSWORD` | Docker MySQL root 密码 | `root` |
+| `MYSQL_DATABASE` | Docker 初始化数据库名 | `robot_dispatch` |
+| `MYSQL_USER` | Docker 初始化数据库用户 | `dispatch` |
+| `MYSQL_PASSWORD` | Docker 初始化数据库密码 | `dispatch` |
+| `MYSQL_PORT` | Docker 映射到宿主机的端口 | `3306` |
 | `DISPATCH_BATTERY_THRESHOLD` | 参与调度的最低电量 | `25` |
 | `HEARTBEAT_OFFLINE_SECONDS` | 心跳超时秒数 | `3600` |
 | `CORS_ALLOW_ORIGINS` | 允许跨域访问的前端来源，逗号分隔 | 本地两个来源 |
@@ -159,12 +164,13 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 | `SESSION_SECRET` | 会话签名密钥，生产环境至少 32 个字符 | `change-this-session-secret` |
 | `SESSION_SECONDS` | 会话有效期 | `28800` |
 | `COOKIE_SECURE` | HTTPS 环境是否只通过安全 Cookie 传输 | `false` |
+| `SESSION_COOKIE_SAMESITE` | Cookie 跨站策略，可选 `strict`、`lax`、`none` | `strict` |
 | `MAINTENANCE_INTERVAL_SECONDS` | 离线机器人检查间隔 | `30` |
 | `LOGIN_WINDOW_SECONDS` | 登录失败限流窗口 | `60` |
 | `LOGIN_MAX_FAILURES` | 单个客户端窗口内允许的最大失败次数 | `5` |
 | `APP_ENV` | 生产环境设为 `production` | `development` |
 
-跨域部署时，前端请求会携带 Cookie，因此 `CORS_ALLOW_ORIGINS` 必须配置为明确的前端来源，不能使用通配来源。
+跨域部署时，前端请求会携带 Cookie，因此 `CORS_ALLOW_ORIGINS` 必须配置为明确的前端来源，不能使用通配来源。只有在确实需要跨站 Cookie 时才使用 `SESSION_COOKIE_SAMESITE=none`，并同时启用 `COOKIE_SECURE=true` 和 HTTPS。
 
 ## API 概览
 
@@ -222,7 +228,7 @@ score = 接近任务起点的距离 × 0.55
 
 ## 测试
 
-运行全部单元测试：
+运行全部单元测试和 API 测试：
 
 ```bash
 python -m unittest discover -v

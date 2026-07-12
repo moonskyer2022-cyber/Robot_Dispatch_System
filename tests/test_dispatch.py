@@ -155,6 +155,17 @@ class DispatchSafetyTests(unittest.TestCase):
 
         self.assertEqual(409, raised.exception.status_code)
 
+    def test_suggestion_does_not_return_stale_idle_robot(self):
+        robot = self.session.get(Robot, "R1")
+        robot.last_heartbeat_at = utc_now() - timedelta(days=1)
+        self.session.commit()
+
+        result = suggest_dispatch("T1", self.session)
+
+        self.assertFalse(result.assigned)
+        self.assertIsNone(result.selected_robot_id)
+        self.assertEqual("offline", robot.status)
+
     def test_decision_log_output_parses_json_fields(self):
         log = DispatchDecisionLog(
             id=1,

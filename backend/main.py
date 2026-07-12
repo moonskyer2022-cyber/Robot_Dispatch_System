@@ -97,8 +97,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOW_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -333,6 +333,8 @@ def suggest_dispatch(
     db: Session = Depends(get_db),
     _user: str = Depends(require_authenticated),
 ):
+    if mark_stale_robots_offline(db):
+        db.commit()
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

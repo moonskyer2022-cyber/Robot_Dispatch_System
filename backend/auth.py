@@ -16,6 +16,7 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "change-this-session-secret")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-me")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "strict").lower()
 APP_ENV = os.getenv("APP_ENV", "development").lower()
 LOGIN_WINDOW_SECONDS = int(os.getenv("LOGIN_WINDOW_SECONDS", "60"))
 LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
@@ -32,6 +33,10 @@ def validate_auth_config() -> None:
             insecure.append("SESSION_SECRET")
         if not COOKIE_SECURE:
             insecure.append("COOKIE_SECURE")
+        if COOKIE_SAMESITE not in {"strict", "lax", "none"}:
+            insecure.append("SESSION_COOKIE_SAMESITE")
+        elif COOKIE_SAMESITE == "none" and not COOKIE_SECURE:
+            insecure.append("SESSION_COOKIE_SAMESITE requires COOKIE_SECURE")
         if insecure:
             raise RuntimeError(
                 f"Insecure production authentication settings: {', '.join(insecure)}"
@@ -111,7 +116,7 @@ def set_session_cookie(response: Response, username: str) -> None:
         max_age=SESSION_SECONDS,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="strict",
+        samesite=COOKIE_SAMESITE,
         path="/",
     )
 

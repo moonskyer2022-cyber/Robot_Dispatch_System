@@ -108,7 +108,7 @@ def estimate_task_distance(db: Session, robot: Robot, task: Task) -> tuple[float
     start = db.get(MapNode, task.start_node)
     end = db.get(MapNode, task.end_node)
     if not start or not end:
-        return 0, 0
+        return None
     approach = distance(robot.x, robot.y, start.x, start.y)
     route = shortest_route_distance(db, task.start_node, task.end_node)
     if route is None:
