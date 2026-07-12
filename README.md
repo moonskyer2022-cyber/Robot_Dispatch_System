@@ -1,27 +1,91 @@
 # AI Robot Dispatch System
 
-一个最小可用的机器人调度系统示例，包含 FastAPI 后端、MySQL 数据库、基础调度规则和前端展示页。
+一个面向仓储和园区场景的机器人任务调度示例系统。项目提供机器人状态管理、任务队列、基于规则的调度决策、地图路径计算、调度日志和 Web 可视化控制台。
 
-## 功能
+> 当前版本定位为可运行的 MVP：调度器采用可解释的规则评分，并使用 MySQL 保存业务数据。
 
-- 机器人状态管理和心跳接口
-- 任务创建、完成、状态流转
-- 任务取消与离线机器人任务自动回收
-- 基于规则评分的 AI 调度建议
-- 自动选择优先级最高的待调度任务
-- 调度决策日志
-- 地图节点展示
-- FastAPI 直接托管前端展示页
+## 目录
 
-## 本地启动
+- [项目概览](#项目概览)
+- [核心功能](#核心功能)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [API 概览](#api-概览)
+- [调度规则](#调度规则)
+- [测试](#测试)
+- [部署建议](#部署建议)
+- [后续规划](#后续规划)
 
-1. 启动 MySQL：
+## 项目概览
+
+系统由 FastAPI 后端和原生 HTML/CSS/JavaScript 前端组成。后端负责认证、任务和机器人状态管理、调度决策以及数据库访问；前端由 FastAPI 直接托管，提供调度台、任务队列、机器人列表、地图节点和决策日志。
+
+系统启动时会执行初始化种子数据，并通过后台维护任务将长时间未上报心跳的机器人标记为离线；如果离线机器人正在执行任务，任务会退回待调度队列。
+
+## 核心功能
+
+- 机器人创建、状态查询和心跳上报
+- 任务创建、分页查询、完成和取消
+- 按优先级选择待调度任务
+- 根据机器人状态、电量、能力和路线距离筛选候选机器人
+- 使用 Dijkstra 算法计算地图节点之间的最短路线
+- 通过数据库条件更新和行锁避免同一机器人被重复分配
+- 记录每次调度的候选机器人、评分明细和决策原因
+- Cookie 会话认证、生产环境配置校验和登录失败限流
+- Web 调度台、任务分页、状态筛选、地图和调度日志展示
+- Alembic 数据库迁移和 MySQL 并发测试
+
+## 技术栈
+
+| 层次 | 技术 |
+| --- | --- |
+| 后端 | Python 3.12、FastAPI、Uvicorn |
+| 数据访问 | SQLAlchemy 2、PyMySQL |
+| 数据库 | MySQL 8.4 |
+| 迁移 | Alembic |
+| 前端 | HTML、CSS、原生 JavaScript |
+| 测试 | Python `unittest`、SQLite 单元测试、MySQL 并发测试 |
+
+## 项目结构
+
+```text
+Robot_Dispatch_System/
+├── backend/
+│   ├── auth.py          # 会话认证和登录失败限流
+│   ├── database.py      # 数据库连接和 Session
+│   ├── dispatch.py      # 路径计算、评分和任务分配
+│   ├── main.py          # FastAPI 应用和 API 路由
+│   ├── models.py        # SQLAlchemy 数据模型
+│   ├── schemas.py       # Pydantic 请求/响应模型
+│   ├── seed.py          # 初始地图和机器人数据
+│   └── time_utils.py    # UTC 时间工具
+├── frontend/
+│   ├── index.html       # 调度台页面
+│   ├── app.js           # 前端状态和 API 交互
+│   └── styles.css       # 页面样式
+├── migrations/
+│   └── versions/        # Alembic 迁移脚本
+├── tests/               # 单元测试和 MySQL 集成测试
+├── work/                # 本地辅助脚本
+├── docker-compose.yml   # MySQL 8.4 服务
+├── alembic.ini          # Alembic 配置
+├── requirements.txt     # Python 依赖
+└── .env.example         # 环境变量模板
+```
+
+## 快速开始
+
+### 1. 启动 MySQL
 
 ```bash
 docker compose up -d mysql
 ```
 
-2. 安装依赖：
+### 2. 创建 Python 环境并安装依赖
+
+Windows：
 
 ```bash
 python -m venv .venv
@@ -29,96 +93,174 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-3. 配置环境变量：
+macOS/Linux：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 3. 配置环境变量
+
+Windows：
 
 ```bash
 copy .env.example .env
 ```
 
-首次部署先执行数据库迁移：
+macOS/Linux：
+
+```bash
+cp .env.example .env
+```
+
+本地开发可以使用模板中的默认值；生产环境必须替换管理员密码和会话密钥。
+
+### 4. 执行数据库迁移
+
+新数据库：
 
 ```bash
 alembic upgrade head
 ```
 
-已有旧版本数据库先标记基础版本，再应用约束迁移：
+已有由早期版本创建的数据库：
 
 ```bash
 alembic stamp 0001
 alembic upgrade head
 ```
 
-4. 启动后端和展示页：
+### 5. 启动应用
 
 ```bash
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-访问：
+访问地址：
 
-- 展示页：http://127.0.0.1:8000
+- 调度台：http://127.0.0.1:8000
 - API 文档：http://127.0.0.1:8000/docs
+- 健康检查：http://127.0.0.1:8000/api/health
 
-## 核心接口
+默认开发账号由 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 控制，建议首次启动前修改 `.env`。
 
-- `GET /api/robots`
-- `GET /api/summary`
-- `POST /api/robots`
-- `POST /api/robots/{robot_id}/heartbeat`
-- `GET /api/tasks`
-- `POST /api/tasks`
-- `POST /api/tasks/{task_id}/complete`
-- `POST /api/tasks/{task_id}/cancel`
-- `POST /api/dispatch/run`
-- `POST /api/dispatch/suggest/{task_id}`
-- `GET /api/dispatch/logs`
-- `GET /api/map/nodes`
-- `GET /api/map/edges`
+## 配置说明
 
-## 配置
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `DATABASE_URL` | MySQL 连接地址 | `mysql+pymysql://dispatch:dispatch@127.0.0.1:3306/robot_dispatch?charset=utf8mb4` |
+| `DISPATCH_BATTERY_THRESHOLD` | 参与调度的最低电量 | `25` |
+| `HEARTBEAT_OFFLINE_SECONDS` | 心跳超时秒数 | `3600` |
+| `CORS_ALLOW_ORIGINS` | 允许跨域访问的前端来源，逗号分隔 | 本地两个来源 |
+| `ADMIN_USERNAME` | 管理员用户名 | `admin` |
+| `ADMIN_PASSWORD` | 管理员密码 | `change-me` |
+| `SESSION_SECRET` | 会话签名密钥，生产环境至少 32 个字符 | `change-this-session-secret` |
+| `SESSION_SECONDS` | 会话有效期 | `28800` |
+| `COOKIE_SECURE` | HTTPS 环境是否只通过安全 Cookie 传输 | `false` |
+| `MAINTENANCE_INTERVAL_SECONDS` | 离线机器人检查间隔 | `30` |
+| `LOGIN_WINDOW_SECONDS` | 登录失败限流窗口 | `60` |
+| `LOGIN_MAX_FAILURES` | 单个客户端窗口内允许的最大失败次数 | `5` |
+| `APP_ENV` | 生产环境设为 `production` | `development` |
 
-- `DATABASE_URL`：MySQL 连接地址
-- `DISPATCH_BATTERY_THRESHOLD`：可参与调度的最低电量
-- `HEARTBEAT_OFFLINE_SECONDS`：心跳超时秒数；刷新机器人列表或运行调度时，执行中任务会退回队列
-- `CORS_ALLOW_ORIGINS`：允许跨域访问的来源，多个来源使用逗号分隔
-- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：调度台管理员账号
-- `SESSION_SECRET`：会话签名密钥，生产环境至少 32 个字符
-- `COOKIE_SECURE`：HTTPS 部署时设为 `true`
-- `APP_ENV`：生产环境设为 `production`，启动时会拒绝不安全的默认认证配置
-- `MAINTENANCE_INTERVAL_SECONDS`：离线机器人后台检查间隔
-- `LOGIN_WINDOW_SECONDS`：登录失败限流窗口，默认 60 秒
-- `LOGIN_MAX_FAILURES`：单个客户端在限流窗口内允许的最大失败次数，默认 5 次
+跨域部署时，前端请求会携带 Cookie，因此 `CORS_ALLOW_ORIGINS` 必须配置为明确的前端来源，不能使用通配来源。
+
+## API 概览
+
+除健康检查和认证接口外，业务接口需要先登录并携带会话 Cookie。
+
+### 认证
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | 登录并创建会话 |
+| `GET` | `/api/auth/session` | 查询当前会话 |
+| `POST` | `/api/auth/logout` | 注销会话 |
+
+### 机器人和任务
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/robots` | 查询机器人列表 |
+| `POST` | `/api/robots` | 创建机器人 |
+| `POST` | `/api/robots/{robot_id}/heartbeat` | 上报机器人心跳 |
+| `GET` | `/api/summary` | 查询仪表盘汇总 |
+| `GET` | `/api/tasks` | 分页查询任务，可按状态筛选 |
+| `POST` | `/api/tasks` | 创建任务 |
+| `POST` | `/api/tasks/{task_id}/complete` | 完成任务 |
+| `POST` | `/api/tasks/{task_id}/cancel` | 取消任务 |
+
+### 调度和地图
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/dispatch/run` | 执行一次任务分配 |
+| `POST` | `/api/dispatch/suggest/{task_id}` | 获取指定任务的调度建议 |
+| `GET` | `/api/dispatch/logs` | 查询调度决策日志 |
+| `GET` | `/api/map/nodes` | 查询地图节点 |
+| `GET` | `/api/map/edges` | 查询启用的地图边 |
+
+## 调度规则
+
+当前版本使用可解释的固定权重评分：
+
+```text
+score = 接近任务起点的距离 × 0.55
+      + 任务路线距离 × 0.25
+      + 电量成本 × 0.12
+```
+
+候选机器人必须同时满足：
+
+- 状态为 `idle`
+- 电量不低于 `DISPATCH_BATTERY_THRESHOLD`
+- 能力包含任务类型
+- 任务起点和终点之间存在可用路线
+
+调度器会先按优先级降序、创建时间升序选择任务，再按评分升序选择机器人。机器人状态更新采用条件更新；任务和机器人状态在同一事务中提交。
 
 ## 测试
+
+运行全部单元测试：
 
 ```bash
 python -m unittest discover -v
 ```
 
-使用专用 MySQL 测试库运行真实并发测试：
+运行 MySQL 并发测试：
 
 ```bash
 set TEST_DATABASE_URL=mysql+pymysql://user:password@127.0.0.1:3306/robot_dispatch_test
 python -m unittest tests.test_mysql_integration -v
 ```
 
-MySQL 并发测试需要先设置 `TEST_DATABASE_URL`，否则该测试会自动跳过。前后端跨域部署时，`CORS_ALLOW_ORIGINS` 必须配置为明确的前端来源，系统会使用带凭证的 Cookie 会话。
+如果没有设置 `TEST_DATABASE_URL`，MySQL 并发测试会自动跳过。提交前建议至少执行：
 
-## 调度规则
-
-第一版采用可解释的规则评分：
-
-```text
-score = 到任务起点距离 * 0.55
-      + 任务路线距离 * 0.25
-      + 电量成本 * 0.12
-      - 任务优先级奖励
+```bash
+python -m compileall -q backend migrations tests work
+python -m unittest discover -v
 ```
 
-候选机器人必须满足：
+## 部署建议
 
-- 状态为 `idle`
-- 电量不低于阈值，默认 25%
-- 能力包含任务类型
+- 生产环境使用独立的 MySQL 用户，不要使用示例密码。
+- 设置 `APP_ENV=production`、长度不少于 32 位的 `SESSION_SECRET` 和 `COOKIE_SECURE=true`。
+- 仅允许可信前端来源访问，严格配置 `CORS_ALLOW_ORIGINS`。
+- 使用反向代理提供 HTTPS，并关闭 `--reload`。
+- 多进程或多实例部署时，应将登录限流从进程内存迁移到 Redis 等共享存储。
+- 生产部署前执行迁移和 MySQL 并发测试，并配置数据库备份。
 
-后续可以把 `backend/dispatch.py` 中的评分逻辑替换为预测模型或策略服务。
+## 后续规划
+
+- 将登录限流和会话状态迁移到共享存储
+- 引入多用户、角色和权限管理
+- 增加任务失败、暂停、重试和执行历史
+- 将机器人能力从逗号分隔字段拆分为关联表
+- 支持可配置调度策略和更丰富的任务约束
+- 增加 API 集成测试、CI 和部署检查
+- 接入真实机器人遥测和路径规划服务
+
+## License
+
+当前仓库未声明开源许可证。如需对外发布，建议补充 `LICENSE` 文件并明确使用条款。
