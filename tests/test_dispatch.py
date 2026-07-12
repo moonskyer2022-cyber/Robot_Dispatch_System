@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database import Base
-from backend.dispatch import assign_next_task, mark_stale_robots_offline
+from backend.dispatch import assign_next_task, mark_stale_robots_offline, score_robot
 from backend.main import cancel_task, heartbeat, suggest_dispatch
 from backend.models import DispatchDecisionLog, MapEdge, MapNode, Robot, Task
 from backend.schemas import DecisionLogOut, RobotCreate, RobotHeartbeat, RobotOut, TaskCreate
@@ -170,6 +170,25 @@ class DispatchSafetyTests(unittest.TestCase):
 
         self.assertEqual(["R1"], output.candidate_robots)
         self.assertEqual("R1", output.score_detail[0]["robot_id"])
+
+    def test_unreachable_task_is_not_dispatched(self):
+        self.session.query(MapEdge).update({MapEdge.enabled: False})
+        self.session.commit()
+        robot = self.session.get(Robot, "R1")
+        task = self.session.get(Task, "T1")
+
+        score = score_robot(self.session, robot, task)
+        selected_task, selected_robot, assigned, reason, _ = assign_next_task(
+            self.session
+        )
+
+        self.assertFalse(score["eligible"])
+        self.assertIn("没有可达路线", score["reason"])
+        self.assertEqual("T1", selected_task.id)
+        self.assertIsNone(selected_robot)
+        self.assertFalse(assigned)
+        self.assertEqual("pending", selected_task.status)
+        self.assertIn("没有可达路线", reason)
 
 
 if __name__ == "__main__":

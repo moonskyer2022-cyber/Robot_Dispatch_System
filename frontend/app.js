@@ -1,5 +1,9 @@
 const api = {
+  session: "/api/auth/session",
+  login: "/api/auth/login",
+  logout: "/api/auth/logout",
   robots: "/api/robots",
+  summary: "/api/summary",
   tasks: "/api/tasks",
   nodes: "/api/map/nodes",
   edges: "/api/map/edges",
@@ -13,8 +17,19 @@ const state = {
   nodes: [],
   edges: [],
   logs: [],
+  summary: {
+    pending_tasks: 0,
+    idle_robots: 0,
+    busy_robots: 0,
+  },
   taskStatus: "all",
+  taskOffset: 0,
+  taskLimit: 20,
+  hasNextTaskPage: false,
 };
+
+let activeLoadController = null;
+let loadSequence = 0;
 
 const labels = {
   status: {
@@ -66,9 +81,11 @@ async function request(url, options = {}) {
   try {
     res = await fetch(url, {
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       ...options,
     });
-  } catch {
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
     throw new Error("无法连接服务，请检查网络后重试");
   }
   if (!res.ok) {
@@ -76,9 +93,22 @@ async function request(url, options = {}) {
     const detail = Array.isArray(error.detail)
       ? error.detail.map((item) => item.msg).join("；")
       : error.detail;
+    if (res.status === 401 && url !== api.login) showLogin();
     throw new Error(detail || "请求失败");
   }
   return res.json();
+}
+
+function showLogin() {
+  qs("#loginOverlay").hidden = false;
+  qs("#logoutBtn").hidden = true;
+}
+
+function hideLogin(username) {
+  qs("#loginOverlay").hidden = true;
+  qs("#logoutBtn").hidden = false;
+  qs("#logoutBtn").title = `当前用户：${username}`;
+  qs("#loginError").textContent = "";
 }
 
 function statusBadge(status) {
@@ -111,9 +141,9 @@ function setButtonBusy(button, busy, busyText) {
 }
 
 function renderMetrics() {
-  qs("#pendingCount").textContent = state.tasks.filter((task) => task.status === "pending").length;
-  qs("#idleCount").textContent = state.robots.filter((robot) => robot.status === "idle").length;
-  qs("#busyCount").textContent = state.robots.filter((robot) => robot.status === "busy").length;
+  qs("#pendingCount").textContent = state.summary.pending_tasks;
+  qs("#idleCount").textContent = state.summary.idle_robots;
+  qs("#busyCount").textContent = state.summary.busy_robots;
   const last = state.logs[0];
   qs("#lastSuggestion").textContent = last ? (last.selected_robot_id || "无可用机器人") : "待运行";
 }
@@ -136,10 +166,7 @@ function renderRobots() {
 }
 
 function renderTasks() {
-  const tasks = state.taskStatus === "all"
-    ? state.tasks
-    : state.tasks.filter((task) => task.status === state.taskStatus);
-  qs("#taskRows").innerHTML = tasks.map((task) => `
+  qs("#taskRows").innerHTML = state.tasks.map((task) => `
     <tr>
       <td class="mono">${escapeHtml(task.id)}</td>
       <td>${escapeHtml(taskType(task.type))}</td>
@@ -154,6 +181,10 @@ function renderTasks() {
       </td>
     </tr>
   `).join("") || `<tr><td colspan="8"><div class="empty-state">当前筛选条件下没有任务</div></td></tr>`;
+  const page = Math.floor(state.taskOffset / state.taskLimit) + 1;
+  qs("#taskPageLabel").textContent = `第 ${page} 页`;
+  qs("#prevTaskPage").disabled = state.taskOffset === 0;
+  qs("#nextTaskPage").disabled = !state.hasNextTaskPage;
 }
 
 function renderNodeOptions() {
@@ -207,21 +238,36 @@ function render() {
 }
 
 async function loadAll() {
-  const [robots, tasks, nodes, edges, logs] = await Promise.all([
-    request(api.robots),
-    request(api.tasks),
-    request(api.nodes),
-    request(api.edges),
-    request(api.logs),
-  ]);
-  state.robots = robots;
-  state.tasks = tasks;
-  state.nodes = nodes;
-  state.edges = edges;
-  state.logs = logs;
-  renderNodeOptions();
-  render();
-  qs("#lastUpdated").textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
+  if (activeLoadController) activeLoadController.abort();
+  const controller = new AbortController();
+  activeLoadController = controller;
+  const sequence = ++loadSequence;
+  const statusQuery = state.taskStatus === "all" ? "" : `&status=${encodeURIComponent(state.taskStatus)}`;
+  const taskUrl = `${api.tasks}?offset=${state.taskOffset}&limit=${state.taskLimit + 1}${statusQuery}`;
+  const requestOptions = { signal: controller.signal };
+  try {
+    const [robots, tasks, nodes, edges, logs, summary] = await Promise.all([
+      request(api.robots, requestOptions),
+      request(taskUrl, requestOptions),
+      request(api.nodes, requestOptions),
+      request(api.edges, requestOptions),
+      request(`${api.logs}?limit=50`, requestOptions),
+      request(api.summary, requestOptions),
+    ]);
+    if (sequence !== loadSequence) return;
+    state.robots = robots;
+    state.hasNextTaskPage = tasks.length > state.taskLimit;
+    state.tasks = tasks.slice(0, state.taskLimit);
+    state.nodes = nodes;
+    state.edges = edges;
+    state.logs = logs;
+    state.summary = summary;
+    renderNodeOptions();
+    render();
+    qs("#lastUpdated").textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
+  } finally {
+    if (activeLoadController === controller) activeLoadController = null;
+  }
 }
 
 qs("#taskForm").addEventListener("submit", async (event) => {
@@ -241,6 +287,34 @@ qs("#taskForm").addEventListener("submit", async (event) => {
     showToast(error.message, "error");
   } finally {
     setButtonBusy(button, false);
+  }
+});
+
+qs("#loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  const credentials = Object.fromEntries(new FormData(event.currentTarget).entries());
+  try {
+    setButtonBusy(button, true, "登录中...");
+    const session = await request(api.login, {
+      method: "POST",
+      body: JSON.stringify(credentials),
+    });
+    event.currentTarget.reset();
+    hideLogin(session.username);
+    await loadAll();
+  } catch (error) {
+    qs("#loginError").textContent = error.message;
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+qs("#logoutBtn").addEventListener("click", async () => {
+  try {
+    await request(api.logout, { method: "POST" });
+  } finally {
+    showLogin();
   }
 });
 
@@ -271,9 +345,29 @@ qs("#refreshBtn").addEventListener("click", async () => {
   }
 });
 
-qs("#taskStatusFilter").addEventListener("change", (event) => {
+qs("#taskStatusFilter").addEventListener("change", async (event) => {
   state.taskStatus = event.target.value;
-  renderTasks();
+  state.taskOffset = 0;
+  try {
+    await loadAll();
+  } catch (error) {
+    if (error.name !== "AbortError") showToast(error.message, "error");
+  }
+});
+
+qs("#prevTaskPage").addEventListener("click", async () => {
+  state.taskOffset = Math.max(0, state.taskOffset - state.taskLimit);
+  await loadAll().catch((error) => {
+    if (error.name !== "AbortError") showToast(error.message, "error");
+  });
+});
+
+qs("#nextTaskPage").addEventListener("click", async () => {
+  if (!state.hasNextTaskPage) return;
+  state.taskOffset += state.taskLimit;
+  await loadAll().catch((error) => {
+    if (error.name !== "AbortError") showToast(error.message, "error");
+  });
 });
 
 qs("#taskRows").addEventListener("click", async (event) => {
@@ -291,7 +385,20 @@ qs("#taskRows").addEventListener("click", async (event) => {
   }
 });
 
-loadAll().catch((error) => showToast(error.message, "error"));
+async function bootstrap() {
+  const session = await request(api.session);
+  if (session.authenticated) {
+    hideLogin(session.username);
+    await loadAll();
+  } else {
+    showLogin();
+  }
+}
+
+bootstrap().catch((error) => {
+  showLogin();
+  showToast(error.message, "error");
+});
 setInterval(() => {
-  if (!document.hidden) loadAll().catch(() => {});
+  if (!document.hidden && !activeLoadController) loadAll().catch(() => {});
 }, 15000);

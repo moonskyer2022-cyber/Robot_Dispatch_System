@@ -6,6 +6,23 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 RobotStatus = Literal["idle", "busy", "charging", "offline"]
+TaskStatus = Literal["pending", "assigned", "completed", "cancelled"]
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class SessionOut(BaseModel):
+    authenticated: bool
+    username: str | None = None
+
+
+class DashboardSummary(BaseModel):
+    pending_tasks: int
+    idle_robots: int
+    busy_robots: int
 
 
 class RobotCreate(BaseModel):
@@ -77,7 +94,7 @@ class TaskOut(BaseModel):
     priority: int
     start_node: str
     end_node: str
-    status: str
+    status: TaskStatus
     assigned_robot_id: str | None
     estimated_distance: float | None
     estimated_duration: int | None

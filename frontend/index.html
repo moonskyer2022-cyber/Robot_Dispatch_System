@@ -31,6 +31,7 @@
         </div>
         <div class="topbar-actions">
           <span id="lastUpdated" class="last-updated">尚未同步</span>
+          <button id="logoutBtn" class="text-button" type="button" hidden>退出</button>
           <button id="refreshBtn" class="icon-button" type="button" title="刷新数据" aria-label="刷新数据">↻</button>
           <button id="runDispatchBtn" class="primary" type="button">运行智能调度</button>
         </div>
@@ -116,6 +117,13 @@
             <tbody id="taskRows"></tbody>
           </table>
         </div>
+        <div class="pagination">
+          <span id="taskPageLabel">第 1 页</span>
+          <div>
+            <button id="prevTaskPage" type="button">上一页</button>
+            <button id="nextTaskPage" type="button">下一页</button>
+          </div>
+        </div>
       </section>
 
       <section class="grid">
@@ -136,6 +144,25 @@
         </div>
       </section>
     </main>
+
+    <div id="loginOverlay" class="login-overlay" hidden>
+      <form id="loginForm" class="login-dialog">
+        <div>
+          <span class="brand-mark">调</span>
+          <h2>登录调度台</h2>
+        </div>
+        <label>
+          用户名
+          <input name="username" autocomplete="username" required />
+        </label>
+        <label>
+          密码
+          <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="loginError" class="form-error" role="alert"></p>
+        <button class="primary" type="submit">登录</button>
+      </form>
+    </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>

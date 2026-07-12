@@ -35,6 +35,19 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
+首次部署先执行数据库迁移：
+
+```bash
+alembic upgrade head
+```
+
+已有旧版本数据库先标记基础版本，再应用约束迁移：
+
+```bash
+alembic stamp 0001
+alembic upgrade head
+```
+
 4. 启动后端和展示页：
 
 ```bash
@@ -49,6 +62,7 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ## 核心接口
 
 - `GET /api/robots`
+- `GET /api/summary`
 - `POST /api/robots`
 - `POST /api/robots/{robot_id}/heartbeat`
 - `GET /api/tasks`
@@ -67,12 +81,28 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 - `DISPATCH_BATTERY_THRESHOLD`：可参与调度的最低电量
 - `HEARTBEAT_OFFLINE_SECONDS`：心跳超时秒数；刷新机器人列表或运行调度时，执行中任务会退回队列
 - `CORS_ALLOW_ORIGINS`：允许跨域访问的来源，多个来源使用逗号分隔
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：调度台管理员账号
+- `SESSION_SECRET`：会话签名密钥，生产环境至少 32 个字符
+- `COOKIE_SECURE`：HTTPS 部署时设为 `true`
+- `APP_ENV`：生产环境设为 `production`，启动时会拒绝不安全的默认认证配置
+- `MAINTENANCE_INTERVAL_SECONDS`：离线机器人后台检查间隔
+- `LOGIN_WINDOW_SECONDS`：登录失败限流窗口，默认 60 秒
+- `LOGIN_MAX_FAILURES`：单个客户端在限流窗口内允许的最大失败次数，默认 5 次
 
 ## 测试
 
 ```bash
 python -m unittest discover -v
 ```
+
+使用专用 MySQL 测试库运行真实并发测试：
+
+```bash
+set TEST_DATABASE_URL=mysql+pymysql://user:password@127.0.0.1:3306/robot_dispatch_test
+python -m unittest tests.test_mysql_integration -v
+```
+
+MySQL 并发测试需要先设置 `TEST_DATABASE_URL`，否则该测试会自动跳过。前后端跨域部署时，`CORS_ALLOW_ORIGINS` 必须配置为明确的前端来源，系统会使用带凭证的 Cookie 会话。
 
 ## 调度规则
 

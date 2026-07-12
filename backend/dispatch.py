@@ -47,15 +47,38 @@ def shortest_route_distance(db: Session, start_node: str, end_node: str) -> floa
 
 def mark_stale_robots_offline(db: Session) -> int:
     stale_before = utc_now() - timedelta(seconds=HEARTBEAT_OFFLINE_SECONDS)
-    stale_robots = (
+    candidates = (
         db.query(Robot)
         .filter(Robot.status.in_(["idle", "busy", "charging"]))
         .filter(Robot.last_heartbeat_at < stale_before)
+        .order_by(Robot.id)
         .all()
     )
-    for robot in stale_robots:
+    changed = 0
+    for candidate in candidates:
+        task = None
+        if candidate.current_task_id:
+            task = (
+                db.query(Task)
+                .filter(Task.id == candidate.current_task_id)
+                .with_for_update(skip_locked=True)
+                .first()
+            )
+            if not task:
+                continue
+        robot = (
+            db.query(Robot)
+            .filter(
+                Robot.id == candidate.id,
+                Robot.status.in_(["idle", "busy", "charging"]),
+                Robot.last_heartbeat_at < stale_before,
+            )
+            .with_for_update(skip_locked=True)
+            .first()
+        )
+        if not robot:
+            continue
         if robot.current_task_id:
-            task = db.get(Task, robot.current_task_id)
             if (
                 task
                 and task.status == "assigned"
@@ -77,10 +100,11 @@ def mark_stale_robots_offline(db: Session) -> int:
                 )
             robot.current_task_id = None
         robot.status = "offline"
-    return len(stale_robots)
+        changed += 1
+    return changed
 
 
-def estimate_task_distance(db: Session, robot: Robot, task: Task) -> tuple[float, int]:
+def estimate_task_distance(db: Session, robot: Robot, task: Task) -> tuple[float, int] | None:
     start = db.get(MapNode, task.start_node)
     end = db.get(MapNode, task.end_node)
     if not start or not end:
@@ -88,7 +112,7 @@ def estimate_task_distance(db: Session, robot: Robot, task: Task) -> tuple[float
     approach = distance(robot.x, robot.y, start.x, start.y)
     route = shortest_route_distance(db, task.start_node, task.end_node)
     if route is None:
-        route = distance(start.x, start.y, end.x, end.y)
+        return None
     total = round(approach + route, 2)
     duration_seconds = int(total * 12)
     return total, duration_seconds
@@ -130,10 +154,14 @@ def score_robot(db: Session, robot: Robot, task: Task) -> dict:
     approach = distance(robot.x, robot.y, start.x, start.y)
     route = shortest_route_distance(db, task.start_node, task.end_node)
     if route is None:
-        route = distance(start.x, start.y, end.x, end.y)
+        return {
+            "robot_id": robot.id,
+            "eligible": False,
+            "score": 999999,
+            "reason": "任务起点与终点之间没有可达路线",
+        }
     battery_cost = 100 - robot.battery
-    priority_bonus = task.priority * 2
-    score = round(approach * 0.55 + route * 0.25 + battery_cost * 0.12 - priority_bonus, 2)
+    score = round(approach * 0.55 + route * 0.25 + battery_cost * 0.12, 2)
     return {
         "robot_id": robot.id,
         "robot_name": robot.name,
@@ -185,6 +213,9 @@ def claim_best_robot(db: Session, task: Task) -> tuple[Robot | None, list[dict],
             robot = db.get(Robot, candidate["robot_id"])
             return robot, scores, "选择综合评分最低的机器人"
 
+    reasons = {item["reason"] for item in scores if not item["eligible"]}
+    if len(reasons) == 1:
+        return None, scores, reasons.pop()
     return None, scores, "当前没有可用的机器人"
 
 
@@ -205,16 +236,25 @@ def assign_next_task(db: Session):
     selected_id = robot.id if robot else None
 
     if robot:
-        total_distance, duration = estimate_task_distance(db, robot, task)
-        task.status = "assigned"
-        task.assigned_robot_id = robot.id
-        task.assigned_at = utc_now()
-        task.estimated_distance = total_distance
-        task.estimated_duration = duration
-        robot.status = "busy"
-        robot.current_task_id = task.id
-        reason = f"{reason}：{robot.name}"
-        assigned = True
+        estimate = estimate_task_distance(db, robot, task)
+        if estimate is None:
+            robot.status = "idle"
+            robot.current_task_id = None
+            robot = None
+            selected_id = None
+            reason = "任务起点与终点之间没有可达路线"
+            assigned = False
+        else:
+            total_distance, duration = estimate
+            task.status = "assigned"
+            task.assigned_robot_id = robot.id
+            task.assigned_at = utc_now()
+            task.estimated_distance = total_distance
+            task.estimated_duration = duration
+            robot.status = "busy"
+            robot.current_task_id = task.id
+            reason = f"{reason}：{robot.name}"
+            assigned = True
     else:
         assigned = False
 
