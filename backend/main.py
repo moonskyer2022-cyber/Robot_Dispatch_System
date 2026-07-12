@@ -64,11 +64,22 @@ async def maintenance_loop() -> None:
         await asyncio.sleep(MAINTENANCE_INTERVAL_SECONDS)
 
 
+def initialize_application() -> None:
+    validate_auth_config()
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+            seed_initial_data(db)
+    except SQLAlchemyError as exc:
+        raise RuntimeError(
+            "Database initialization failed. Check DATABASE_URL, start MySQL, "
+            "and run 'alembic upgrade head'."
+        ) from exc
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    validate_auth_config()
-    with SessionLocal() as db:
-        seed_initial_data(db)
+    initialize_application()
     maintenance_task = asyncio.create_task(maintenance_loop())
     try:
         yield

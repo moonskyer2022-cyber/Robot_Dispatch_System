@@ -17,5 +17,30 @@ services:
       timeout: 5s
       retries: 8
 
+  backend:
+    build:
+      context: .
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD:-dispatch}@mysql:3306/${MYSQL_DATABASE:-robot_dispatch}?charset=utf8mb4
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      SESSION_SECRET: ${SESSION_SECRET:-change-this-session-secret}
+      SESSION_SECONDS: ${SESSION_SECONDS:-28800}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-strict}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      DISPATCH_BATTERY_THRESHOLD: ${DISPATCH_BATTERY_THRESHOLD:-25}
+      HEARTBEAT_OFFLINE_SECONDS: ${HEARTBEAT_OFFLINE_SECONDS:-3600}
+      MAINTENANCE_INTERVAL_SECONDS: ${MAINTENANCE_INTERVAL_SECONDS:-30}
+      LOGIN_WINDOW_SECONDS: ${LOGIN_WINDOW_SECONDS:-60}
+      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
+      APP_ENV: ${APP_ENV:-development}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    restart: unless-stopped
+
 volumes:
   mysql_data:

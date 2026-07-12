@@ -1,7 +1,9 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -58,6 +60,17 @@ class ApiFlowTests(unittest.TestCase):
         response = self.client.get("/api/robots")
 
         self.assertEqual(401, response.status_code)
+
+    def test_database_failure_has_actionable_startup_error(self):
+        with patch.object(
+            main_module,
+            "SessionLocal",
+            side_effect=SQLAlchemyError("db down"),
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                main_module.initialize_application()
+
+        self.assertIn("Database initialization failed", str(raised.exception))
 
     def test_login_create_and_dispatch_flow(self):
         login = self.client.post(

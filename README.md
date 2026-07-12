@@ -16,6 +16,7 @@
 - [调度规则](#调度规则)
 - [测试](#测试)
 - [部署建议](#部署建议)
+- [持续集成](#持续集成)
 - [后续规划](#后续规划)
 
 ## 项目概览
@@ -69,7 +70,10 @@ Robot_Dispatch_System/
 │   └── versions/        # Alembic 迁移脚本
 ├── tests/               # 单元测试和 MySQL 集成测试
 ├── work/                # 本地辅助脚本
-├── docker-compose.yml   # MySQL 8.4 服务
+│   └── reset_demo.py    # 重置演示数据
+├── .github/workflows/   # GitHub Actions CI
+├── Dockerfile           # 后端容器镜像
+├── docker-compose.yml   # MySQL 和后端服务
 ├── alembic.ini          # Alembic 配置
 ├── requirements.txt     # Python 依赖
 └── .env.example         # 环境变量模板
@@ -77,13 +81,46 @@ Robot_Dispatch_System/
 
 ## 快速开始
 
-### 1. 启动 MySQL
+### 1. 一键启动完整 Demo
+
+推荐使用 Docker 启动 MySQL 和后端服务：
+
+```bash
+docker compose up --build
+```
+
+启动后访问：http://127.0.0.1:8000
+
+如果启动失败，优先检查 MySQL 容器是否健康、`DATABASE_URL` 是否正确，以及数据库是否已执行 `alembic upgrade head`。
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+清空 Demo 数据卷并重新初始化：
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+如果只需要重置现有数据库中的演示数据，不删除 MySQL 数据卷：
+
+```bash
+python work/reset_demo.py
+```
+
+### 2. 单独启动 MySQL
+
+如果需要本地运行 Python 后端，也可以只启动数据库：
 
 ```bash
 docker compose up -d mysql
 ```
 
-### 2. 创建 Python 环境并安装依赖
+### 3. 创建 Python 环境并安装依赖
 
 Windows：
 
@@ -101,7 +138,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境变量
+### 4. 配置环境变量
 
 Windows：
 
@@ -117,7 +154,7 @@ cp .env.example .env
 
 本地开发可以使用模板中的默认值；生产环境必须替换管理员密码和会话密钥。
 
-### 4. 执行数据库迁移
+### 5. 执行数据库迁移
 
 新数据库：
 
@@ -132,7 +169,7 @@ alembic stamp 0001
 alembic upgrade head
 ```
 
-### 5. 启动应用
+### 6. 启动应用
 
 ```bash
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
@@ -156,6 +193,7 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 | `MYSQL_USER` | Docker 初始化数据库用户 | `dispatch` |
 | `MYSQL_PASSWORD` | Docker 初始化数据库密码 | `dispatch` |
 | `MYSQL_PORT` | Docker 映射到宿主机的端口 | `3306` |
+| `APP_PORT` | Docker 映射后端服务的宿主机端口 | `8000` |
 | `DISPATCH_BATTERY_THRESHOLD` | 参与调度的最低电量 | `25` |
 | `HEARTBEAT_OFFLINE_SECONDS` | 心跳超时秒数 | `3600` |
 | `CORS_ALLOW_ORIGINS` | 允许跨域访问的前端来源，逗号分隔 | 本地两个来源 |
@@ -256,6 +294,15 @@ python -m unittest discover -v
 - 使用反向代理提供 HTTPS，并关闭 `--reload`。
 - 多进程或多实例部署时，应将登录限流从进程内存迁移到 Redis 等共享存储。
 - 生产部署前执行迁移和 MySQL 并发测试，并配置数据库备份。
+
+## 持续集成
+
+仓库包含 GitHub Actions 工作流，会在 `main` 推送和 Pull Request 中自动执行：
+
+- Docker Compose 配置检查
+- MySQL 服务启动和 Alembic 迁移
+- 单元测试和 MySQL 并发测试
+- 前端 JavaScript 语法检查
 
 ## 后续规划
 
